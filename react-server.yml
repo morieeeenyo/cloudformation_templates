@@ -75,11 +75,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: "22"
           ToPort: "22"
-          CidrIp: "122.196.123.2"
+          CidrIp: "10.0.0.0/23"
         - IpProtocol: tcp
           FromPort: "80"
           ToPort: "80"
-          CidrIp: "122.196.123.2"
+          CidrIp: "10.0.0.0/23"
   ElasticIP:
     Type: AWS::EC2::EIP
     Properties:
