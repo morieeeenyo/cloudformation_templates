@@ -1,0 +1,124 @@
+# Resources：配下に立ち上げるリソース（AWS上のサービス）を指定。
+# VPC、Subnet、EC2インスタンス…等Reactアプリケーションを立ち上げる際に必要になるリソースを指定している。
+Resources:
+  # このリソースに設定する名前を指定。
+  # VPCと指定しているが、どんな名前でも指定することが可能
+  VPC:
+    # Type：立ち上げるAWSのリソースを指定。
+    # ここではVPCを指定している。
+    Type: AWS::EC2::VPC
+    # Properties：リソースに対しての設定を指定。
+    # ここではVPCに紐づけるCidrBlockや名前タグ等を指定する。
+    Properties:
+      CidrBlock: 10.0.0.0/23
+      Tags:
+        - Key: Name
+          Value: react-vpc
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.0.0.0/24
+      Tags:
+        - Key: Name
+          Value: public-react-subnet
+      AvailabilityZone: ap-northeast-1a
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: react-internet-gateway
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: InternetGateway
+      VpcId:
+        # Ref関数を使用することでテンプレート内の他リソースを引用して指定することが可能
+        Ref: VPC
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: public-react-route-table
+      VpcId:
+        Ref: VPC
+  InternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Subnet
+      RouteTableId:
+        Ref: RouteTable
+  KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: react-server-key
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: AllowSSHAndHTTPSecurityGroup
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: "172.31.0.0/16"
+        - IpProtocol: tcp
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: "172.31.0.0/16"
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId:
+        Ref: EC2Instance
+      EIP:
+        Ref: ElasticIP
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      Tags:
+        - Key: Name
+          Value: react-server
+      InstanceType: t2.micro
+      ImageId: ami-04beabd6a4fb6ab6f
+      KeyName:
+        Ref: KeyPair
+      SecurityGroupIds:
+        # GetAtt関数を使用することでテンプレート内の他リソース配下の変数を指定することが可能
+        - Fn::GetAtt:
+            - SecurityGroup
+            - GroupId
+      SubnetId:
+        Ref: Subnet
+      # UserDataプロパティーでEC2インスタンス立ち上げ時に実行するスクリプトを指定
+      UserData:
+        Fn::Base64: |
+          # nginxをインストールするスクリプト
+          sudo yum install -y nginx
+          sudo systemctl start nginx
+          # reactアプリケーションを作成するスクリプト
+          sudo yum install -y nodejs npm
+          npx -y create-react-app /home/ec2-user/sample-app
+          cd /home/ec2-user/sample-app
+          npm run build
+          # nginxにreactアプリケーションを載せるスクリプト
+          sudo rm -rf /usr/share/nginx/html/*
+          sudo cp -r /home/ec2-user/sample-app/build/* /usr/share/nginx/html/
